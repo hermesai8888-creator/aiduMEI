@@ -860,6 +860,9 @@ async def _record_http_outcome(request: Request, call_next):
         # 请求 Y 的任何一次 commit 会把 X 的半截写一起提交（AST 扫描 69 处
         # 写路径无回滚）。现在请求收尾时按上下文戳回滚「本请求开启但未提交」
         # 的事务；嵌套借用不受影响（戳相同不回滚）。
+        # 注意：本中间件跑在事件循环线程，这里只够得着 async 路由的连接；同步路由
+        # （add/search/update/delete 等）在工作线程，由 utils._get_thread_conn 在同线程
+        # 下一次借出时回滚。
         _tx_janitor(_BORROW_CONTEXT.get())
         _BORROW_CONTEXT.reset(_ctx_token)
     http_metrics.record(response.status_code)
