@@ -428,6 +428,11 @@ def _write_last_id(msg_id: int) -> None:
     Path(LAST_ID_FILE).write_text(str(msg_id))
 
 
+def _open_state_db():
+    """只读打开宿主 state.db：本进程只读它，不该持有写句柄、更不该在宿主写入时抢锁。"""
+    return sqlite3.connect(Path(STATE_DB).resolve().as_uri() + "?mode=ro", uri=True)
+
+
 def _fetch_new_messages(last_id: int, limit: int = 200) -> tuple[list, int]:
     """从宿主 state.db 增量读取新对话消息。"""
     if not STATE_DB:
@@ -436,7 +441,7 @@ def _fetch_new_messages(last_id: int, limit: int = 200) -> tuple[list, int]:
         logger.warning(f"宿主会话库不存在: {STATE_DB}")
         return [], last_id
     try:
-        conn = sqlite3.connect(STATE_DB)
+        conn = _open_state_db()
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute(
@@ -497,18 +502,32 @@ def _resolve_session_owner(session_id: str) -> str:
 
     此前固定写 DEFAULT_USER_ID——owner 不明确时静默写错租户，比报错更糟。
     从 state.db 的 session 行读 user_id；读不到或为空 → 返回空串，调用方拒写。
+
+    宿主 sessions 表的主键列叫 `id`（messages.session_id 引用它，与
+    _fetch_new_messages 的 JOIN 同一口径）。此前这里写成 `WHERE session_id=?`，
+    在真实 state.db 上必报 no such column，被下面的 except 吞成空串 —— 每个会话都被判
+    「owner 不明」拒写，自动记忆从未写进过一条。
     """
     try:
-        conn = sqlite3.connect(STATE_DB)
+        conn = _open_state_db()
         try:
             row = conn.execute(
-                "SELECT user_id FROM sessions WHERE session_id=?", (session_id,)
+                "SELECT user_id FROM sessions WHERE id=?", (session_id,)
             ).fetchone()
             return (row[0] or "").strip() if row else ""
         finally:
             conn.close()
     except Exception:
         return ""
+
+
+def _transient_http_error(error) -> bool:
+    """_api_post 的业务错误形如 "HTTP 503"：5xx 与 429 视为暂时性，值得下一轮重试。"""
+    parts = str(error or "").split()
+    if len(parts) == 2 and parts[0] == "HTTP" and parts[1].isdigit():
+        code = int(parts[1])
+        return code >= 500 or code == 429
+    return False
 
 
 def run_auto_memory() -> None:
@@ -521,6 +540,9 @@ def run_auto_memory() -> None:
     sessions = _group_by_session(messages)
     stored_total = 0
     skipped = 0
+    # 暂时性失败（5xx / 429）的会话不能被游标越过：越过即永久丢失，下一轮再也读不到。
+    # 4xx 是确定性的拒绝（凭据、caller、校验），重试也不会变，照旧跳过并告警。
+    hold_from = None
     for sid, msgs in sessions.items():
         if len(msgs) < 2:
             continue
@@ -541,7 +563,13 @@ def run_auto_memory() -> None:
             logger.info(f"[auto-memory] 会话 {sid[:8]}… → {n} 条记忆（owner={owner}）")
         else:
             logger.warning(f"[auto-memory] 会话 {sid[:8]}… 存入失败: {resp.get('error')}")
+            if _transient_http_error(resp.get("error")):
+                first = msgs[0]["id"]
+                hold_from = first if hold_from is None else min(hold_from, first)
 
+    if hold_from is not None:
+        max_id = min(max_id, hold_from - 1)
+        logger.warning(f"[auto-memory] 有会话暂时性写入失败，游标停在 {max_id}，下一轮重试")
     _write_last_id(max_id)
     if stored_total or skipped:
         logger.info(
