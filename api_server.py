@@ -818,7 +818,9 @@ async def _security_headers(request: Request, call_next):
          "img-src 'self' data: https:; "
          "style-src 'self'; "
          "script-src 'self'; "
-         "connect-src 'self'; "
+         # api.github.com：控制台「新版提醒」（默认关闭，localStorage 显式开启）唯一的外连目标。
+         # 只写 'self' 时开了也被 CSP 拦死、错误被 catch 吞掉 —— 宣称可开的功能实际不可用。
+         "connect-src 'self' https://api.github.com; "
          "frame-ancestors 'none'; "
          "base-uri 'self'"),
     ):

@@ -75,7 +75,8 @@ function setDeployedVersion(ver, fullVer) {
 // version like "18.2.0-zeus" is normalized to its pure numeric part first.
 function cmpVersion(a, b) {
   const norm = function (s) {
-    return String(s).replace(/^v/i, '').replace(/-.*$/, '').trim();
+    // release tag 形如 f0.7 / f0.6++，/health 给的是 0.7.0：前缀 v/f 与尾部 -xxx/+ 都去掉
+    return String(s).replace(/^[vf]/i, '').replace(/[-+].*$/, '').trim();
   };
   const pa = norm(a).split('.').map(function (x) { return parseInt(x, 10) || 0; });
   const pb = norm(b).split('.').map(function (x) { return parseInt(x, 10) || 0; });
@@ -92,7 +93,7 @@ async function checkLatestVersion() {
     const resp = await fetch(GITHUB_REPO_API, { headers: { Accept: 'application/vnd.github+json' } });
     if (!resp.ok) return;
     const release = await resp.json();
-    const latest = (release.tag_name || '').replace(/^v/, '');
+    const latest = (release.tag_name || '').replace(/^[vf]/i, '');
     if (!latest || !currentVersion || currentVersion === '—') return;
     // Show badge only when the deployed version lags behind GitHub latest.
     if (cmpVersion(currentVersion, latest) < 0) {

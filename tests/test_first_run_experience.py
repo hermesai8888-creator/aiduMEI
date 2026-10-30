@@ -228,6 +228,20 @@ def test_frontend_github_update_check_is_opt_in():
     assert "localStorage.getItem('aidumei.updateCheck') === '1'" in text
     assert "if (ENABLE_UPDATE_CHECK) checkLatestVersion()" in text
 
+def test_frontend_update_check_target_is_allowed_by_csp():
+    """Opting in must actually work: CSP connect-src has to allow the origin it fetches.
+
+    With connect-src 'self' only, the browser blocks the request and the catch
+    swallows it, so the documented opt-in silently does nothing.
+    """
+    import api_server
+    from fastapi.testclient import TestClient
+    text = (_ROOT / "frontend" / "js" / "main.js").read_text(encoding="utf-8")
+    origin = re.search(r"const GITHUB_REPO_API = '(https://[^/']+)", text).group(1)
+    csp = TestClient(api_server.app).get("/livez").headers["content-security-policy"]
+    connect = next(d for d in csp.split(";") if d.strip().startswith("connect-src")).split()[1:]
+    assert origin in connect, (origin, connect)
+
 def test_ui_package_excludes_local_dev_proxy():
     """The console directory must not contain a proxy with intentionally open write endpoints."""
     assert not (_ROOT / "frontend" / "dev_server.py").exists()
