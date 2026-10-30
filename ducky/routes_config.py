@@ -583,13 +583,11 @@ def register_config_routes(app: FastAPI) -> None:
           · 改密成功后**撤销全部既有会话**，强制所有端重新登录 ——
             否则老会话仍能用旧凭据继续访问，改密等于没改。
 
-        v22.0（雷霆审计 B7）：须 admin。
+        v22.0（雷霆审计 B7）：须 admin。判据与其它配置写面同一个 `_require_config_admin`
+        （session 直通；Bearer 须绑定 + 名单）。此前这里单独用 `_is_admin_caller(caller)`：
+        控制台改密不带 caller、默认部署也没有 admin 名单，于是主人登录后改密永远被拒。
         """
-        from ducky.federation.routes import _is_admin_caller
-        from ducky.security.auth import enforce_caller_binding
-        enforce_caller_binding(caller, "config:write")
-        if not _is_admin_caller(caller):
-            return {"status": "error", "detail": "口令修改须 admin（AIDUMEI_FEDERATION_ADMINS）"}
+        _require_config_admin(caller, operation="config:write")
         from ducky.security.auth import (
             check_ui_password,
             hash_password,

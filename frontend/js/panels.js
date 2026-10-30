@@ -1553,8 +1553,8 @@ async function changePassword(body) {
     if (msgEl) msgEl.innerHTML = '<span class="c-bad">请填写完整 / Please fill all fields</span>';
     return;
   }
-  if (newPwd.length < 4) {
-    if (msgEl) msgEl.innerHTML = '<span class="c-bad">新密码至少 4 位 / Too short</span>';
+  if (newPwd.length < 8) {
+    if (msgEl) msgEl.innerHTML = '<span class="c-bad">新密码至少 8 位 / Too short (min 8)</span>';
     return;
   }
   if (newPwd !== confirm) {
