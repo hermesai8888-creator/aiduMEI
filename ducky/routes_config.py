@@ -526,6 +526,11 @@ def register_config_routes(app: FastAPI) -> None:
                 old_section["config"] = old_cfg
                 raw[section] = old_section
             _atomic_write_config(raw)
+        # 认知 LLM（治理/蒸馏/reflect 的 call_llm）读的是进程级缓存：写完就失效，
+        # 不依赖客户端记得再打 /reload —— 只走 API 改配置的调用方此前会一直用旧
+        # endpoint/key（换 key 往往正是因为旧 key 外泄）。mem0 单例仍由 /reload 换代。
+        from ducky.llm_client import invalidate_llm_config_cache
+        invalidate_llm_config_cache()
         logger.info("🛠️ 配置段已在线更新: %s", section)
         return {"status": "ok", "updated": section, "config": _build_config_view()}
 
