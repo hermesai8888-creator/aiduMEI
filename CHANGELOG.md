@@ -2,7 +2,7 @@
 
 ## v0.7.0 (对外 f0.7 · 2026-10-29 维护者授权公开 · 底座更换:native 单库内核默认、mem0 可选)
 
-> **用例总数 4310 → 3875**（f0.6+++ 路由收敛后重新计数;本版 = 行为 3248 + 脚本/钩子 481 + 守卫 146(`pytest --collect-only` 实测,三桶口径 `scripts/count_test_kinds.py` 可复算）。全量套件 3844 通过 / 31 跳过(含 mem0 旧内核路径,需加装 `requirements-mem0.txt`)。
+> **用例总数 4310 → 3878**（f0.6+++ 路由收敛后重新计数;本版 = 行为 3251 + 脚本/钩子 481 + 守卫 146(`pytest --collect-only` 实测,三桶口径 `scripts/count_test_kinds.py` 可复算）。全量套件 3847 通过 / 31 跳过(含 mem0 旧内核路径,需加装 `requirements-mem0.txt`)。
 >
 > 质量口径:真实使用回归集 v3(私有,不公开)逐类不降;公开仓带同结构的虚构回归集(`benchmarks/build_public_regression.py` 生成)。本版起 README 不再引用任何公开跑分名次。
 

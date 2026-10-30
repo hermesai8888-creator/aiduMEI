@@ -3,7 +3,7 @@
 #
 # 职责（只做三件事，绝不多手）：
 #   1. qdrant 容器不在 → docker start 拉起
-#   2. API /health 不通 → 用守护脚本拉起（cd 铁律：必须从安装目录启动）
+#   2. API /health 不通 → 从安装目录拉起 api_server.py（cd 铁律：必须从安装目录启动）
 #   3. 每次拉起动作写日志留痕（含时间、原因、结果），供结案与巡检回读
 #
 # 铁律对齐：
@@ -21,7 +21,8 @@ INSTALL_DIR="${AIDUMEI_INSTALL_DIR:-$(cd -- "${_script_dir:+$_script_dir/..}" 2>
 API_URL="${AIDUMEI_URL:-http://127.0.0.1:8767}"
 QDRANT_CONTAINER="${AIDUMEI_QDRANT_CONTAINER:-qdrant-server}"
 GUARD_LOG="$INSTALL_DIR/logs/watchdog.log"
-START_SCRIPT="$INSTALL_DIR/start-aidumei.sh"
+# 解释器用绝对路径启动：与下面 pgrep 的匹配串逐字一致，否则下一跳认不出刚拉起的进程、重复拉起。
+API_PYTHON="$INSTALL_DIR/venv/bin/python"
 
 ts() { date '+%F %T'; }
 
@@ -75,14 +76,17 @@ if pgrep -f "$INSTALL_DIR/venv/bin/python api_server.py" >/dev/null 2>&1; then
   exit 0
 fi
 
-# 进程不在 → 拉起（cd 铁律在 start-aidumei.sh 内保证）
+# 进程不在 → 从安装目录拉起（cd 铁律）。
+# 此前调用仓库里并不存在的 start-aidumei.sh，拉起这一步必失败；那一行的 `&>>` 又是
+# bash 4 语法，macOS 自带 /bin/bash 3.2 解析整份脚本就报错 —— 连上面的探活都不会跑。
 rm -f /tmp/.aidumei_watchdog_unhealthy_count
-if [ ! -x "$START_SCRIPT" ] && [ ! -f "$START_SCRIPT" ]; then
-  echo "$(ts) [watchdog] ❌ 守护启动脚本不存在: $START_SCRIPT" >> "$GUARD_LOG"
+if [ ! -x "$API_PYTHON" ]; then
+  echo "$(ts) [watchdog] ❌ 找不到安装目录的解释器: $API_PYTHON" >> "$GUARD_LOG"
   exit 1
 fi
-echo "$(ts) [watchdog] api_server 进程不存在，用 $START_SCRIPT 拉起" >> "$GUARD_LOG"
-nohup bash "$START_SCRIPT" &>> "$INSTALL_DIR/logs/aidumem.log" &
+echo "$(ts) [watchdog] api_server 进程不存在，从 $INSTALL_DIR 拉起" >> "$GUARD_LOG"
+# exec：子 shell 直接变成服务进程，不留一个等待中的 shell 占着调用方（cron）的输出管道。
+(cd "$INSTALL_DIR" && exec nohup "$API_PYTHON" api_server.py >> "$INSTALL_DIR/logs/aidumem.log" 2>&1) </dev/null &
 disown
 
 # 拉起后复核（最多等 30s，服务冷启动含 mem0 预热）
